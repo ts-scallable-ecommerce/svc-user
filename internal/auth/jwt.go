@@ -55,6 +55,9 @@ func LoadIssuerFromFiles(privatePath, publicPath, issuer string, audience []stri
 
 // GenerateAccessToken issues a signed JWT for the supplied claims.
 func (t *TokenIssuer) GenerateAccessToken(subject string, claims map[string]any) (string, error) {
+	if t.signingKey == nil {
+		return "", fmt.Errorf("signing key not configured")
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"sub": subject,
 		"iss": t.issuer,

@@ -19,6 +19,10 @@ func NewClient(addr string) *redis.Client {
 }
 
 // Ping ensures the connection is available.
-func Ping(ctx context.Context, client *redis.Client) error {
+type pinger interface {
+	Ping(context.Context) *redis.StatusCmd
+}
+
+func Ping(ctx context.Context, client pinger) error {
 	return client.Ping(ctx).Err()
 }

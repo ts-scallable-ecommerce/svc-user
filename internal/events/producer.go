@@ -10,7 +10,12 @@ import (
 
 // Producer publishes domain events to Kafka topics using the outbox pattern.
 type Producer struct {
-	writer *kafka.Writer
+	writer messageWriter
+}
+
+type messageWriter interface {
+	WriteMessages(context.Context, ...kafka.Message) error
+	Close() error
 }
 
 // NewProducer configures the Kafka writer.

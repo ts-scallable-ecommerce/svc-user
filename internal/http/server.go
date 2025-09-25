@@ -16,8 +16,9 @@ import (
 
 // Server wraps the Fiber app and configuration.
 type Server struct {
-	app *fiber.App
-	cfg *config.Config
+	app      *fiber.App
+	cfg      *config.Config
+	shutdown func(context.Context) error
 }
 
 // NewServer configures the HTTP server with middlewares and routes.
@@ -34,7 +35,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 
 	handlers.RegisterHealthRoutes(app)
 
-	return &Server{app: app, cfg: cfg}, nil
+	return &Server{app: app, cfg: cfg, shutdown: app.ShutdownWithContext}, nil
 }
 
 // Start begins listening on the configured HTTP address.
@@ -44,7 +45,7 @@ func (s *Server) Start() error {
 
 // Stop gracefully shuts down the server.
 func (s *Server) Stop(ctx context.Context) error {
-	if err := s.app.ShutdownWithContext(ctx); err != nil {
+	if err := s.shutdown(ctx); err != nil {
 		return fmt.Errorf("shutdown http server: %w", err)
 	}
 	return nil
