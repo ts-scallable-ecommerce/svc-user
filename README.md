@@ -65,7 +65,6 @@ make migrate-up  # Apply database migrations (requires migrate tool)
 make migrate-down# Rollback the last migration
 ```
 
-### Container Image
 
 The repository includes a multi-stage `Dockerfile` that builds both the HTTP and gRPC binaries using Go 1.25.1 and packages them
 into a minimal distroless runtime image.
