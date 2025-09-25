@@ -82,6 +82,7 @@ jobs:
           path: coverage.out
 
       - name: Enforce coverage threshold
+        if: github.event_name == 'pull_request'
         run: |
           total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')
           python - "$total" <<'PY'
