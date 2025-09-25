@@ -1,20 +1,43 @@
 package main
 
 import (
+	"context"
 	"log"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/tasiuskenways/scalable-ecommerce/svc-user/internal/config"
+	httptransport "github.com/tasiuskenways/scalable-ecommerce/svc-user/internal/http"
 )
 
 func main() {
-	app := fiber.New()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
 
-	// healthcheck
-	app.Get("/healthz", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok"})
-	})
+	srv, err := httptransport.NewServer(cfg)
+	if err != nil {
+		log.Fatalf("failed to create http server: %v", err)
+	}
 
-	// attach user handlers later
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
 
-	log.Fatal(app.Listen(":8080"))
+	go func() {
+		if err := srv.Start(); err != nil {
+			log.Fatalf("http server error: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Stop(shutdownCtx); err != nil {
+		log.Printf("error shutting down http server: %v", err)
+	}
+
+	log.Println("http server shut down cleanly")
 }
