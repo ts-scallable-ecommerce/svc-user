@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package user.v1;
+
+option go_package = "github.com/yourorg/proto-contracts/gen/go/user/v1;userv1";
+
+message UserId {
+  string id = 1;
+}
+
+message Email {
+  string email = 1;
+}
+
+message Empty {}
+
+message UserProfile {
+  string id = 1;
+  string email = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string status = 5; // pending|active|disabled
+  repeated string roles = 6;
+}
+
+message Permissions {
+  repeated string items = 1;
+  uint64 version = 2;
+}
+
+service UserReadService {
+  rpc GetUserById (UserId) returns (UserProfile);
+  rpc GetUserByEmail (Email) returns (UserProfile);
+  rpc GetPermissions (UserId) returns (Permissions);
+}
+
+message ValidateAccessRequest {
+  string user_id = 1;
+  string permission = 2;
+}
+
+message ValidateAccessResponse {
+  bool allowed = 1;
+}
+
+service AuthorizationService {
+  rpc ValidateAccess (ValidateAccessRequest) returns (ValidateAccessResponse);
+}
