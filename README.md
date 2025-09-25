@@ -65,6 +65,19 @@ make migrate-up  # Apply database migrations (requires migrate tool)
 make migrate-down# Rollback the last migration
 ```
 
+
+The repository includes a multi-stage `Dockerfile` that builds both the HTTP and gRPC binaries using Go 1.25.1 and packages them
+into a minimal distroless runtime image.
+
+```bash
+docker build -t svc-user:local .
+docker run --rm -p 8080:8080 svc-user:local               # Start the HTTP server
+docker run --rm svc-user:local /usr/local/bin/user-grpc   # Start the gRPC server
+```
+
+Override environment variables (e.g., database credentials, Redis address) with `-e` flags or a mounted file when running the
+container.
+
 ### Migrations
 
 The SQL migrations under `internal/db/migrations` implement the schema defined in the technical specification, including RBAC tables and a transactional outbox table. Use the [`golang-migrate`](https://github.com/golang-migrate/migrate) CLI or compatible tooling to apply them.
