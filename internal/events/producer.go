@@ -9,19 +9,27 @@ import (
 )
 
 // Producer publishes domain events to Kafka topics using the outbox pattern.
+type messageWriter interface {
+	WriteMessages(ctx context.Context, msgs ...kafka.Message) error
+	Close() error
+}
+
 type Producer struct {
-	writer *kafka.Writer
+	writer messageWriter
 }
 
 // NewProducer configures the Kafka writer.
 func NewProducer(brokers []string, topic string) *Producer {
-	return &Producer{
-		writer: &kafka.Writer{
-			Addr:     kafka.TCP(brokers...),
-			Topic:    topic,
-			Balancer: &kafka.LeastBytes{},
-		},
-	}
+	return NewProducerWithWriter(&kafka.Writer{
+		Addr:     kafka.TCP(brokers...),
+		Topic:    topic,
+		Balancer: &kafka.LeastBytes{},
+	})
+}
+
+// NewProducerWithWriter constructs a producer with a custom writer implementation.
+func NewProducerWithWriter(w messageWriter) *Producer {
+	return &Producer{writer: w}
 }
 
 // Publish emits an event payload.

@@ -81,6 +81,19 @@ jobs:
           name: go-coverage
           path: coverage.out
 
+      - name: Enforce coverage threshold
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')
+          python - "$total" <<'PY'
+import sys
+coverage = float(sys.argv[1])
+threshold = 95.0
+if coverage < threshold:
+    sys.stderr.write(f"Coverage {coverage:.2f}% is below threshold {threshold:.1f}%\n")
+    sys.exit(1)
+print(f"Coverage {coverage:.2f}% meets threshold {threshold:.1f}%")
+PY
+
   docker-build:
     runs-on: ubuntu-latest
     needs: test

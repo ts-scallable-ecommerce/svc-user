@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -34,21 +35,23 @@ func HashPassword(password string) (string, error) {
 
 // VerifyPassword compares a password with the encoded hash.
 func VerifyPassword(password, encodedHash string) (bool, error) {
-	var mem uint32
-	var iter uint32
-	var par uint8
-	var saltB64, hashB64 string
-
-	n, err := fmt.Sscanf(encodedHash, "argon2id$v=19$m=%d,t=%d,p=%d$%s$%s", &mem, &iter, &par, &saltB64, &hashB64)
-	if err != nil || n != 5 {
+	parts := strings.Split(encodedHash, "$")
+	if len(parts) != 5 || parts[0] != "argon2id" || parts[1] != "v=19" {
 		return false, fmt.Errorf("invalid hash format")
 	}
 
-	salt, err := base64.RawStdEncoding.DecodeString(saltB64)
+	var mem uint32
+	var iter uint32
+	var par uint8
+	if _, err := fmt.Sscanf(parts[2], "m=%d,t=%d,p=%d", &mem, &iter, &par); err != nil {
+		return false, fmt.Errorf("invalid hash format")
+	}
+
+	salt, err := base64.RawStdEncoding.DecodeString(parts[3])
 	if err != nil {
 		return false, fmt.Errorf("decode salt: %w", err)
 	}
-	hash, err := base64.RawStdEncoding.DecodeString(hashB64)
+	hash, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
 		return false, fmt.Errorf("decode hash: %w", err)
 	}

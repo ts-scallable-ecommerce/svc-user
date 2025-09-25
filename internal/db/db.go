@@ -8,9 +8,11 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+var openDB = sql.Open
+
 // Connect establishes a PostgreSQL connection using the pgx driver.
 func Connect(ctx context.Context, dsn string) (*sql.DB, error) {
-	db, err := sql.Open("pgx", dsn)
+	db, err := openDB("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
