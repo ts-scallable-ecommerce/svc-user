@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/tasiuskenways/scalable-ecommerce/svc-user/internal/auth"
+	"github.com/tasiuskenways/scalable-ecommerce/svc-user/internal/cache"
 	"github.com/tasiuskenways/scalable-ecommerce/svc-user/internal/config"
 	"github.com/tasiuskenways/scalable-ecommerce/svc-user/internal/db"
 	httptransport "github.com/tasiuskenways/scalable-ecommerce/svc-user/internal/http"
@@ -39,12 +40,20 @@ func main() {
 		log.Fatalf("failed to load jwt keys: %v", err)
 	}
 
+	redisClient := cache.NewClient(cfg.RedisAddr)
+	defer redisClient.Close()
+	if err := cache.Ping(context.Background(), redisClient); err != nil {
+		log.Fatalf("failed to connect redis: %v", err)
+	}
+
+	tokenBlacklist := auth.NewRedisTokenBlacklist(redisClient)
+
 	userRepo := users.NewSQLRepository(dbConn)
 	rbacService := rbac.NewService(dbConn)
-	userService := users.NewService(userRepo, issuer, rbacService)
+	userService := users.NewService(userRepo, issuer, rbacService, tokenBlacklist)
 	userHandler := handlers.NewUserHandler(userService)
 
-	srv, err := httptransport.NewServer(cfg, logger, issuer, userHandler)
+	srv, err := httptransport.NewServer(cfg, logger, issuer, tokenBlacklist, userHandler)
 	if err != nil {
 		log.Fatalf("failed to create http server: %v", err)
 	}

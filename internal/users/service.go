@@ -3,23 +3,26 @@ package users
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/tasiuskenways/scalable-ecommerce/svc-user/internal/auth"
 )
 
 // Service orchestrates user business logic.
 type Service struct {
-	repo      Repository
-	issuer    *auth.TokenIssuer
-	roleStore RoleStore
+	repo        Repository
+	issuer      *auth.TokenIssuer
+	roleStore   RoleStore
+	revocations auth.TokenBlacklist
 }
 
 // NewService constructs the service dependencies.
-func NewService(repo Repository, issuer *auth.TokenIssuer, roles RoleStore) *Service {
-	return &Service{repo: repo, issuer: issuer, roleStore: roles}
+func NewService(repo Repository, issuer *auth.TokenIssuer, roles RoleStore, revocations auth.TokenBlacklist) *Service {
+	return &Service{repo: repo, issuer: issuer, roleStore: roles, revocations: revocations}
 }
 
 // RoleStore exposes RBAC operations required by the service.
@@ -83,6 +86,7 @@ type Profile struct {
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUserDisabled       = errors.New("user disabled")
+	ErrTokenInvalid       = errors.New("invalid token")
 )
 
 // Register orchestrates the basic user registration flow.
@@ -241,6 +245,35 @@ func (s *Service) HasPermission(ctx context.Context, userID, permission string) 
 	return s.roleStore.HasPermission(ctx, userID, permission)
 }
 
+// Logout blacklists the supplied token until it would naturally expire.
+func (s *Service) Logout(ctx context.Context, token string) error {
+	if s.revocations == nil {
+		return errors.New("token blacklist not configured")
+	}
+
+	claims, err := s.issuer.ParseAndValidate(token)
+	if err != nil {
+		return ErrTokenInvalid
+	}
+
+	expValue, ok := claims["exp"]
+	if !ok {
+		return ErrTokenInvalid
+	}
+
+	exp, err := parseExpiration(expValue)
+	if err != nil {
+		return ErrTokenInvalid
+	}
+
+	ttl := time.Until(time.Unix(exp, 0))
+	if ttl <= 0 {
+		ttl = time.Second
+	}
+
+	return s.revocations.Revoke(ctx, token, ttl)
+}
+
 // ParseSubject extracts the user ID from a JWT.
 func (s *Service) ParseSubject(token string) (string, error) {
 	return s.issuer.SubjectFromToken(token)
@@ -286,4 +319,21 @@ func validateEmail(email string) error {
 		return fmt.Errorf("invalid email address")
 	}
 	return nil
+}
+
+func parseExpiration(value any) (int64, error) {
+	switch v := value.(type) {
+	case float64:
+		return int64(v), nil
+	case int64:
+		return v, nil
+	case json.Number:
+		i, err := v.Int64()
+		if err != nil {
+			return 0, err
+		}
+		return i, nil
+	default:
+		return 0, fmt.Errorf("unsupported expiration type %T", value)
+	}
 }

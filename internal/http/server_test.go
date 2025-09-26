@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"log/slog"
@@ -45,7 +46,7 @@ func TestServerRegisterAndProfileRoutes(t *testing.T) {
 	}
 
 	cfg := &config.Config{HTTPAddr: ":0"}
-	srv, err := NewServer(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), issuer, handlers.NewUserHandler(svc))
+	srv, err := NewServer(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), issuer, noopBlacklist{}, handlers.NewUserHandler(svc))
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
@@ -133,10 +134,16 @@ type stubUserService struct {
 	getProfileFn     func(context.Context, string) (*users.Profile, error)
 	updateProfileFn  func(context.Context, string, users.UpdateProfileRequest) (*users.Profile, error)
 	changePasswordFn func(context.Context, string, string, string) error
+	logoutFn         func(context.Context, string) error
 	assignRoleFn     func(context.Context, string, string) error
 	permissionsFn    func(context.Context, string) ([]string, error)
 	hasPermissionFn  func(context.Context, string, string) (bool, error)
 }
+
+type noopBlacklist struct{}
+
+func (noopBlacklist) Revoke(context.Context, string, time.Duration) error { return nil }
+func (noopBlacklist) IsBlacklisted(context.Context, string) (bool, error) { return false, nil }
 
 func (s *stubUserService) Register(ctx context.Context, req users.RegisterRequest) (*users.RegisterResult, error) {
 	return s.registerFn(ctx, req)
@@ -156,6 +163,13 @@ func (s *stubUserService) UpdateProfile(ctx context.Context, userID string, req 
 
 func (s *stubUserService) ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error {
 	return s.changePasswordFn(ctx, userID, currentPassword, newPassword)
+}
+
+func (s *stubUserService) Logout(ctx context.Context, token string) error {
+	if s.logoutFn != nil {
+		return s.logoutFn(ctx, token)
+	}
+	return nil
 }
 
 func (s *stubUserService) AssignRole(ctx context.Context, userID, role string) error {

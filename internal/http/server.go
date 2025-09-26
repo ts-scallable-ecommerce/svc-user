@@ -24,7 +24,7 @@ type Server struct {
 }
 
 // NewServer configures the HTTP server with middlewares and routes.
-func NewServer(cfg *config.Config, log *slog.Logger, issuer *auth.TokenIssuer, userHandler *handlers.UserHandler) (*Server, error) {
+func NewServer(cfg *config.Config, log *slog.Logger, issuer *auth.TokenIssuer, blacklist auth.TokenBlacklist, userHandler *handlers.UserHandler) (*Server, error) {
 	app := fiber.New(fiber.Config{
 		Prefork:               false,
 		DisableStartupMessage: true,
@@ -47,7 +47,7 @@ func NewServer(cfg *config.Config, log *slog.Logger, issuer *auth.TokenIssuer, u
 	handlers.RegisterHealthRoutes(app)
 
 	api := app.Group("/api/v1")
-	handlers.RegisterUserRoutes(api, userHandler, middleware.Authenticated(issuer))
+	handlers.RegisterUserRoutes(api, userHandler, middleware.Authenticated(issuer, blacklist))
 
 	return &Server{app: app, cfg: cfg}, nil
 }

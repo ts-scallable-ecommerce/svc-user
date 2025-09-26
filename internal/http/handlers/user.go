@@ -19,6 +19,7 @@ type UserService interface {
 	GetProfile(ctx context.Context, userID string) (*users.Profile, error)
 	UpdateProfile(ctx context.Context, userID string, req users.UpdateProfileRequest) (*users.Profile, error)
 	ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error
+	Logout(ctx context.Context, token string) error
 	AssignRole(ctx context.Context, userID, role string) error
 	Permissions(ctx context.Context, userID string) ([]string, error)
 	HasPermission(ctx context.Context, userID, permission string) (bool, error)
@@ -45,6 +46,7 @@ func RegisterUserRoutes(app fiber.Router, handler *UserHandler, auth fiber.Handl
 	authenticated.Get("/me", handler.profile)
 	authenticated.Patch("/me", handler.updateProfile)
 	authenticated.Post("/me/change-password", handler.changePassword)
+	authenticated.Post("/logout", handler.logout)
 
 	admin := app.Group("/admin")
 	admin.Use(auth)
@@ -149,6 +151,22 @@ func (h *UserHandler) changePassword(c *fiber.Ctx) error {
 	}
 
 	return response.OK(c, "password changed", nil)
+}
+
+func (h *UserHandler) logout(c *fiber.Ctx) error {
+	token := middleware.Token(c)
+	if token == "" {
+		return response.Unauthorized(c, "missing bearer token")
+	}
+
+	if err := h.svc.Logout(c.Context(), token); err != nil {
+		if errors.Is(err, users.ErrTokenInvalid) {
+			return response.Unauthorized(c, "invalid or expired token")
+		}
+		return response.InternalError(c, err.Error())
+	}
+
+	return response.OK(c, "logout successful", nil)
 }
 
 func (h *UserHandler) assignRole(c *fiber.Ctx) error {

@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -16,7 +17,7 @@ import (
 )
 
 func TestRegisterAuthenticateAndProfileFlow(t *testing.T) {
-	svc, repo, roles := newTestService(t)
+	svc, repo, roles, _ := newTestService(t)
 	ctx := context.Background()
 
 	res, err := svc.Register(ctx, users.RegisterRequest{
@@ -90,7 +91,7 @@ func TestRegisterAuthenticateAndProfileFlow(t *testing.T) {
 }
 
 func TestRegisterValidation(t *testing.T) {
-	svc, _, _ := newTestService(t)
+	svc, _, _, _ := newTestService(t)
 	ctx := context.Background()
 
 	if _, err := svc.Register(ctx, users.RegisterRequest{Email: "invalid", Password: "short"}); err == nil {
@@ -99,7 +100,7 @@ func TestRegisterValidation(t *testing.T) {
 }
 
 func TestAuthenticateInvalidCredentials(t *testing.T) {
-	svc, _, _ := newTestService(t)
+	svc, _, _, _ := newTestService(t)
 	ctx := context.Background()
 
 	if _, err := svc.Authenticate(ctx, users.AuthenticateRequest{Email: "missing@example.com", Password: "none"}); err == nil {
@@ -107,11 +108,30 @@ func TestAuthenticateInvalidCredentials(t *testing.T) {
 	}
 }
 
-func newTestService(t *testing.T) (*users.Service, *memoryRepo, *memoryRoles) {
+func TestLogoutBlacklistsToken(t *testing.T) {
+	svc, _, _, blacklist := newTestService(t)
+	ctx := context.Background()
+
+	res, err := svc.Register(ctx, users.RegisterRequest{Email: "logout@example.com", Password: "Password!2"})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	if err := svc.Logout(ctx, res.Tokens.AccessToken); err != nil {
+		t.Fatalf("logout: %v", err)
+	}
+
+	if !blacklist.has(res.Tokens.AccessToken) {
+		t.Fatal("expected token to be blacklisted")
+	}
+}
+
+func newTestService(t *testing.T) (*users.Service, *memoryRepo, *memoryRoles, *memoryBlacklist) {
 	t.Helper()
 
 	repo := newMemoryRepo()
 	roles := newMemoryRoles()
+	blacklist := newMemoryBlacklist()
 
 	priv, pub := generateKeyPair(t)
 	issuer, err := auth.NewTokenIssuer(priv, pub, "test", []string{"api"})
@@ -119,8 +139,8 @@ func newTestService(t *testing.T) (*users.Service, *memoryRepo, *memoryRoles) {
 		t.Fatalf("new token issuer: %v", err)
 	}
 
-	svc := users.NewService(repo, issuer, roles)
-	return svc, repo, roles
+	svc := users.NewService(repo, issuer, roles, blacklist)
+	return svc, repo, roles, blacklist
 }
 
 type memoryRepo struct {
@@ -255,6 +275,45 @@ func (m *memoryRoles) hasRole(userID, role string) bool {
 	defer m.mu.RUnlock()
 	roles := m.roles[userID]
 	_, ok := roles[role]
+	return ok
+}
+
+type memoryBlacklist struct {
+	mu     sync.RWMutex
+	tokens map[string]time.Time
+}
+
+func newMemoryBlacklist() *memoryBlacklist {
+	return &memoryBlacklist{tokens: make(map[string]time.Time)}
+}
+
+func (m *memoryBlacklist) Revoke(_ context.Context, token string, ttl time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ttl <= 0 {
+		ttl = time.Second
+	}
+	m.tokens[token] = time.Now().Add(ttl)
+	return nil
+}
+
+func (m *memoryBlacklist) IsBlacklisted(_ context.Context, token string) (bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	expiry, ok := m.tokens[token]
+	if !ok {
+		return false, nil
+	}
+	if time.Now().After(expiry) {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (m *memoryBlacklist) has(token string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, ok := m.tokens[token]
 	return ok
 }
 
